@@ -14,20 +14,35 @@ Source:
 https://www.kaggle.com/datasets/ishadss/productivity-prediction-of-garment-employees
 
 Variables:
+
 01 date : Date in MM-DD-YYYY
+
 02 day : Day of the Week
+
 03 quarter : A portion of the month. A month was divided into four quarters
+
 04 department : Associated department with the instance
+
 05 teamno : Associated team number with the instance 
+
 06 noofworkers : Number of workers in each team 
+
 07 noofstylechange : Number of changes in the style of a particular product
+
 08 targetedproductivity : Targeted productivity set by the Authority for each team for each day. 
+
 09 smv : Standard Minute Value, it is the allocated time for a task 
+
 10 wip : Work in progress. Includes the number of unfinished items for products 
+
 11 overtime : Represents the amount of overtime by each team in minutes
+
 12 incentive : Represents the amount of financial incentive (in BDT) that enables or motivates a particular course of action.
+
 13 idletime : The amount of time when the production was interrupted due to several reasons 
+
 14 idlemen : The number of workers who were idle due to production interruption
+
 15 actual_productivity : The actual % of productivity that was delivered by the workers. It ranges from 0-1.
 
 
@@ -35,10 +50,10 @@ Variables:
 
 1. Which department is most productive?
 2. Which day of the week is most productive for each department? 
-4. Which team in the sewing department is the most productive?
-5. Does the amount of over time impact the productivity in the sewing department? 
-6. Does the amount of incentives impact the productivity in the sewing department? 
-7. Does the number of workers impact the productivity in the sewing department? 
+3. Which team in the sewing department is the most productive?
+4. Does the amount of over time impact the productivity in the sewing department? 
+5. Does the amount of incentives impact the productivity in the sewing department? 
+6. Does the number of workers impact the productivity in the sewing department? 
 
 # Data cleaning
 
@@ -83,7 +98,7 @@ The finishing department always has missing wip values because theytake all the 
 ```{r}
 work2 <- work |>
   select(-quarter, -smv, -idle_time, -idle_men, -no_of_style_change) |>
-  mutate(department = factor(ifelse(department == "sweing", "sewing", department)))
+  mutate(department = ifelse(department == "sweing", "sewing", department))
 names(work2)
 ```
 
@@ -91,7 +106,12 @@ names(work2)
 work3 <- work2 |>
   rename(dept = department, target = targeted_productivity, ot = over_time, 
          workers = no_of_workers, actual = actual_productivity) |>
-  mutate(dept = factor(dept), team = factor(team), day = factor(day))
+  mutate(dept = factor(dept), 
+         team = factor(team), 
+         day = factor(day, 
+                      levels = c("Saturday", "Sunday", "Monday", "Tuesday", 
+                                 "Wednesday", "Thursday", "Friday"))) |>
+  group_by(dept)
 head(work3)
 ```
 
@@ -101,51 +121,118 @@ head(work3)
 work3 |>
   ggplot( aes(x = dept)) +
   geom_bar()
-
-work3 |>
-  ggplot(aes(x = team)) + 
-  geom_bar() + facet_wrap(~dept, nrow = 2)
-
-work3 |>
-  ggplot(aes(x = target)) + 
-  geom_bar() + facet_wrap(~dept, nrow = 2)
-
-work3 |>
-  ggplot(aes(x = wip)) + 
-  geom_histogram(bins = 100) + facet_wrap(~dept, nrow = 2)
-
-work3 |>
-  ggplot(aes(x = ot)) + 
-  geom_histogram(bins = 50) + facet_wrap(~dept, nrow = 2)
-
-work3 |>
-  filter(dept == "sewing") |>
-  ggplot(aes(x = incentive)) + 
-  geom_histogram(bins = 100) + facet_wrap(~dept, nrow = 2)
-
-work3 |>
-  ggplot(aes(x = workers)) + 
-  geom_histogram(bins = 50) + facet_wrap(~dept, nrow = 2)
-
-work3 |>
-  ggplot(aes(x = actual)) + 
-  geom_histogram(bins = 50) + facet_wrap(~dept, nrow = 2)
-
 ```
 
-
-
-# Visual Analysis 
-
-### 1. Average actual productivity per department
+sewing department has higher frequency 
 
 ```{r}
 work3 |>
-  group_by(dept) |>
-  summarise(avg_productivity = mean(actual))
+  ggplot( aes(x = day)) +
+  geom_bar()
 ```
 
-### 2. Average actual productivity per department and team
+
+
+```{r}
+work3 |>
+  ggplot(aes(x = team)) + 
+  geom_bar() + facet_wrap(~dept)
+```
+
+finishing department has more variation in observations per team
+
+
+
+```{r}
+work3 |>
+  ggplot(aes(x = target)) + 
+  geom_bar() + facet_wrap(~dept, scales = "free_x")
+```
+
+right skew in both departments. Most common target is 80% 
+
+
+
+```{r}
+work3 |>
+  ggplot(aes(x = wip)) + 
+  geom_histogram(bins = 100, na.rm = TRUE) + facet_wrap(~dept)
+```
+
+only sewing department has wip. extreme values are present.
+
+
+
+```{r}
+work3 |>
+  ggplot(aes(x = ot)) + 
+  geom_histogram(bins = 20) + facet_wrap(~dept, scales = "free_x")
+```
+
+left skew in finishing dept and somewhat normal distribution in sewing dept. Both dept's have extreme values
+
+
+
+```{r}
+work3 |>
+  ggplot(aes(x = incentive)) + 
+  geom_histogram(bins = 10) + facet_wrap(~dept, scales = "free_x")
+```
+
+incentive for finishing dept is mostly 0 with some extreme values
+incentive for sewing dept seems to have a normal distribution
+
+
+
+```{r}
+work3 |>
+  ggplot(aes(x = workers)) + 
+  geom_histogram(bins = 30) + facet_wrap(~dept, scales = "free_x")
+```
+
+right skew and extreme value in sewing dept 
+
+
+
+```{r}
+work3 |>
+ # filter(dept == "finishing") |>
+  ggplot(aes(x = actual)) + 
+  geom_histogram(bins = 20) + facet_wrap(~dept)
+
+```
+
+right skew in both dept 
+
+
+
+# Visual Analysis of Questions
+
+### 1.Which department is most productive? 
+
+```{r}
+work3 |>
+  ggplot(aes(x = dept, y = actual)) + 
+  geom_boxplot() + 
+  stat_summary(fun.y="mean", shape = 1, color = "red")
+```
+
+The finishing department has higher productivity and no outliers. The sewing department might be more affected by changing conditions. 
+
+### 2. Which day of the week is most productive for each department? 
+
+```{r}
+work3 |>
+  ggplot(aes(x = day, y = actual)) +
+  geom_boxplot() + facet_wrap(~dept) +
+    stat_summary(fun.y="mean", shape = 1, color = "red")
+
+```
+For both departments, the median productivity is highest on Saturdays. This company seems to start its work week on Saturdays, because there is no data for Fridays in the data set. Perhaps the high productivity on Saturdays is related to it being right after a day off. 
+
+There are a lot of outliers in the sewing department but only 1 in the finishing department
+
+### 3. Which team in the sewing department is the most productive?
 
 ```{r}
 library(ggplot2)
@@ -163,7 +250,20 @@ work.summary |>
   geom_col(aes(fill = team)) +
   scale_fill_manual(values = colors) +
   facet_wrap(~dept, nrow = 2) + 
-  theme_minimal() + theme(legend.position = "none")
+  theme_minimal() + theme(legend.position = "none") +
+  ggtitle("Actual Productivity Per Department And Team")
 
 ```
 
+```{r}
+work.summary |>
+  filter(dept == "sewing") |>
+  mutate(team = reorder(team, desc(avg_actual))) |>
+  ggplot(aes(x = team, y = avg_actual)) +
+  geom_col(aes(fill = team)) +
+  scale_fill_manual(values = colors) +
+  theme_minimal() + theme(legend.position = "none") +
+  ggtitle("Actual Productivity Per Team In Sewing Dept")
+```
+
+Team 1 is the most productive in the sewing department. 
