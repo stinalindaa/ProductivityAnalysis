@@ -1,0 +1,169 @@
+---
+title: "510 Project (Worker Productivity)"
+output: html_document
+date: "2022-12-02"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Intro to data set
+
+Source:
+https://www.kaggle.com/datasets/ishadss/productivity-prediction-of-garment-employees
+
+Variables:
+01 date : Date in MM-DD-YYYY
+02 day : Day of the Week
+03 quarter : A portion of the month. A month was divided into four quarters
+04 department : Associated department with the instance
+05 teamno : Associated team number with the instance 
+06 noofworkers : Number of workers in each team 
+07 noofstylechange : Number of changes in the style of a particular product
+08 targetedproductivity : Targeted productivity set by the Authority for each team for each day. 
+09 smv : Standard Minute Value, it is the allocated time for a task 
+10 wip : Work in progress. Includes the number of unfinished items for products 
+11 overtime : Represents the amount of overtime by each team in minutes
+12 incentive : Represents the amount of financial incentive (in BDT) that enables or motivates a particular course of action.
+13 idletime : The amount of time when the production was interrupted due to several reasons 
+14 idlemen : The number of workers who were idle due to production interruption
+15 actual_productivity : The actual % of productivity that was delivered by the workers. It ranges from 0-1.
+
+
+# Some Questions. 
+
+1. Which department is most productive?
+2. Which day of the week is most productive for each department? 
+4. Which team in the sewing department is the most productive?
+5. Does the amount of over time impact the productivity in the sewing department? 
+6. Does the amount of incentives impact the productivity in the sewing department? 
+7. Does the number of workers impact the productivity in the sewing department? 
+
+# Data cleaning
+
+### 1. Read in the data set. Check if it's a tibble. 
+```{r, message=FALSE, warning=FALSE}
+library(readr)
+work <- read_csv("~/Desktop/STAT510_F22/datasets/garments_worker_productivity.csv")
+head(work)
+```
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+is_tibble(work)
+```
+
+
+### 2. skim the data set. 
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(skimr)
+skim_without_charts(work)
+```
+
+There are a lot of missing values for wip. 
+
+### 3. Investigate the missing values in wip
+
+```{r, message=FALSE, warning=FALSE}
+work |>
+  mutate(is.na.wip = is.na(wip)) |>
+  select(department, is.na.wip) |>
+  group_by(department, is.na.wip) |>
+  summarize(count = n())
+```
+
+The finishing department always has missing wip values because theytake all the "work in progress" parts and put them together. The sewing department will always have varying # of wip garments. 
+
+
+### 4. select important variables and data cleaning
+
+```{r}
+work2 <- work |>
+  select(-quarter, -smv, -idle_time, -idle_men, -no_of_style_change) |>
+  mutate(department = factor(ifelse(department == "sweing", "sewing", department)))
+names(work2)
+```
+
+```{r}
+work3 <- work2 |>
+  rename(dept = department, target = targeted_productivity, ot = over_time, 
+         workers = no_of_workers, actual = actual_productivity) |>
+  mutate(dept = factor(dept), team = factor(team), day = factor(day))
+head(work3)
+```
+
+# Visualize distribution of variables of interest
+
+```{r}
+work3 |>
+  ggplot( aes(x = dept)) +
+  geom_bar()
+
+work3 |>
+  ggplot(aes(x = team)) + 
+  geom_bar() + facet_wrap(~dept, nrow = 2)
+
+work3 |>
+  ggplot(aes(x = target)) + 
+  geom_bar() + facet_wrap(~dept, nrow = 2)
+
+work3 |>
+  ggplot(aes(x = wip)) + 
+  geom_histogram(bins = 100) + facet_wrap(~dept, nrow = 2)
+
+work3 |>
+  ggplot(aes(x = ot)) + 
+  geom_histogram(bins = 50) + facet_wrap(~dept, nrow = 2)
+
+work3 |>
+  filter(dept == "sewing") |>
+  ggplot(aes(x = incentive)) + 
+  geom_histogram(bins = 100) + facet_wrap(~dept, nrow = 2)
+
+work3 |>
+  ggplot(aes(x = workers)) + 
+  geom_histogram(bins = 50) + facet_wrap(~dept, nrow = 2)
+
+work3 |>
+  ggplot(aes(x = actual)) + 
+  geom_histogram(bins = 50) + facet_wrap(~dept, nrow = 2)
+
+```
+
+
+
+# Visual Analysis 
+
+### 1. Average actual productivity per department
+
+```{r}
+work3 |>
+  group_by(dept) |>
+  summarise(avg_productivity = mean(actual))
+```
+
+### 2. Average actual productivity per department and team
+
+```{r}
+library(ggplot2)
+work.summary <- work3 |>
+  group_by(dept, team) |>
+  summarise(avg_actual= mean(actual)) |>
+  ungroup()
+
+work.summary
+
+colors <- c("lightpink1", "lightpink2", "lightpink3", "mistyrose1", "mistyrose2", "mistyrose3", "rosybrown1", "rosybrown2", "rosybrown3", "thistle1", "thistle2", "thistle3")
+
+work.summary |>
+  ggplot(aes(x = team, y = avg_actual)) +
+  geom_col(aes(fill = team)) +
+  scale_fill_manual(values = colors) +
+  facet_wrap(~dept, nrow = 2) + 
+  theme_minimal() + theme(legend.position = "none")
+
+```
+
