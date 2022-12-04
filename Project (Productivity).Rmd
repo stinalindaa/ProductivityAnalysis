@@ -274,20 +274,32 @@ Team 1 is the most productive in the sewing department.
 ```{r, message=FALSE, warning=FALSE}
 library(GGally)
 sewing <- work3 |>
-  filter(dept == "sewing")
+  filter(dept == "sewing") |>
+  ungroup() |>
+  select(-dept, -date)
 
 sewing |>
-  ungroup() |>
-  select(ot, incentive, workers, actual) |>
   ggpairs()
-
 ```
 
 incentive looks linearly related to actual, but they are also highly correlated.
 
+There are some 0 values in the incentive variable. We'd like to exclude rows where there was no incentive given to the workers, to evaluate the response with an actual incentive implemented by management. It would also be valuable to drop 0 values for target, because it's also something set by management. 
+
+```{r, message=FALSE, warning=FALSE}
+
+sewing2 <- sewing |>
+  filter(incentive != 0, target != 0)
+
+ggpairs(sewing2)
+```
+
+
+
+
 ### Test the full model (with all 3 variables) against the reduced model (without workers)
 ```{r}
-mod.full = lm(actual ~ incentive + ot + workers, data = sewing)
+mod.full = lm(actual ~ incentive + ot + workers, data = sewing2)
 mod.reduced = lm(actual ~ incentive + ot, data = sewing)
 anova(mod.reduced, mod.full)
 ```
@@ -305,3 +317,127 @@ anova(mod.minimal, mod.reduced)
 
 p < 0.05 so reject the further reduced model and keep the model with 2 variables incentive and workers
 # Variable Selection 
+
+### AIC Variable selection
+
+```{r}
+n = nrow(work3)
+mod0 = lm(actual ~ 1, data = sewing)
+mod.all = lm(actual ~., data = sewing)
+step(mod0, scope = list(lower = mod0, upper = mod.all))
+```
+
+```{r}
+model.aic <- lm(actual ~ incentive + target + ot, data = sewing)
+summary(model.aic)
+```
+
+### Check interaction
+
+```{r}
+model.aic.interaction <- lm(actual ~ incentive * target * ot, data = sewing)
+
+anova(model.aic, model.aic.interaction)
+```
+
+ANOVA p-value is > 0.05 so we can accept the model without interaction. 
+
+So the model right now for productivity in the sewing department is actual = incentive + target + ot
+
+77% of the variation in actual productivity is explained by the model. 
+
+### Check excluded variables 
+
+```{r}
+model.day = lm(actual ~ day, data = sewing)
+summary(model.day)
+```
+
+
+# Check LINE assumptions 
+
+```{r}
+library(broom)
+model.table = augment(model.aic)
+names(model.table)
+
+ggplot(model.table, aes(x = .fitted, y = .resid)) +
+  geom_point() +
+  geom_hline(yintercept = 0, colour = 'blue') +
+  labs(x = 'Fitted Values', y = 'Residuals') +
+  ggtitle('Residual vs Fit') +
+  theme_bw()
+
+```
+
+
+
+```{r}
+ggplot(model.table, aes(sample = .resid)) +
+  stat_qq() +
+  stat_qq_line() +
+  ggtitle('Normal Q-Q Plot') +
+  theme_bw()
+```
+
+
+```{r}
+shapiro.test(resid(model.aic))
+```
+
+# Transformation
+
+```{r}
+library(car)
+mod.boxcox = boxCox(model.aic, lambda = seq(1.5, 3, length=20))
+
+```
+
+```{r}
+lambda.opt = mod.boxcox$x[which.max(mod.boxcox$y)] 
+lambda.opt
+```
+
+
+
+```{r}
+sewing2 <- sewing |>
+  mutate(actual.transf = actual ^ lambda.opt)
+
+sewing2
+
+model.transformed = lm(formula = actual.transf ~ incentive + target + ot, data = sewing2)
+summary(model.transformed)
+
+```
+
+
+# Check LINE assumptions on transformed model
+
+```{r}
+model.table.transf = augment(model.transformed)
+names(model.table.transf)
+
+ggplot(model.table.transf, aes(x = .fitted, y = .resid)) +
+  geom_point() +
+  geom_hline(yintercept = 0, colour = 'blue') +
+  labs(x = 'Fitted Values', y = 'Residuals') +
+  ggtitle('Residual vs Fit') +
+  theme_bw()
+
+```
+
+
+
+```{r}
+ggplot(model.table.transf, aes(sample = .resid)) +
+  stat_qq() +
+  stat_qq_line() +
+  ggtitle('Normal Q-Q Plot') +
+  theme_bw()
+```
+
+
+```{r}
+shapiro.test(resid(model.transformed))
+```
