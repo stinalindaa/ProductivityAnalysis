@@ -1,0 +1,292 @@
+---
+title: "Project (Productivity) With Random Selection"
+output: html_document
+date: "2022-12-04"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Intro to data set
+
+Source:
+https://www.kaggle.com/datasets/ishadss/productivity-prediction-of-garment-employees
+
+Variables:
+
+01 date : Date in MM-DD-YYYY
+
+02 day : Day of the Week
+
+03 quarter : A portion of the month. A month was divided into four quarters
+
+04 department : Associated department with the instance
+
+05 teamno : Associated team number with the instance 
+
+06 noofworkers : Number of workers in each team 
+
+07 noofstylechange : Number of changes in the style of a particular product
+
+08 targetedproductivity : Targeted productivity set by the Authority for each team for each day. 
+
+09 smv : Standard Minute Value, it is the allocated time for a task 
+
+10 wip : Work in progress. Includes the number of unfinished items for products 
+
+11 overtime : Represents the amount of overtime by each team in minutes
+
+12 incentive : Represents the amount of financial incentive (in BDT) that enables or motivates a particular course of action.
+
+13 idletime : The amount of time when the production was interrupted due to several reasons 
+
+14 idlemen : The number of workers who were idle due to production interruption
+
+15 actual_productivity : The actual % of productivity that was delivered by the workers. It ranges from 0-1.
+
+
+# Some Questions. 
+
+1. Which department is most productive?
+2. Which day of the week is most productive for each department? 
+3. Which team in the sewing department is the most productive?
+4. Does the amount of over time impact the productivity in the sewing department? 
+5. Does the amount of incentives impact the productivity in the sewing department? 
+6. Does the number of workers impact the productivity in the sewing department? 
+
+# Data cleaning
+
+### 1. Read in the data set. Check if it's a tibble. 
+```{r, message=FALSE, warning=FALSE}
+library(readr)
+work <- read_csv("~/Desktop/STAT510_F22/datasets/garments_worker_productivity.csv")
+head(work)
+```
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+is_tibble(work)
+```
+
+
+### 2. skim the data set. 
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(skimr)
+skim_without_charts(work)
+```
+
+There are a lot of missing values for wip. 
+
+### 3. Investigate the missing values in wip
+
+```{r, message=FALSE, warning=FALSE}
+work |>
+  mutate(is.na.wip = is.na(wip)) |>
+  select(department, is.na.wip) |>
+  group_by(department, is.na.wip) |>
+  summarize(count = n())
+```
+
+The finishing department always has missing wip values because theytake all the "work in progress" parts and put them together. The sewing department will always have varying # of wip garments. 
+
+
+### 4. Select important variables and data cleaning
+
+```{r}
+work2 <- work |>
+  select(-quarter, -smv, -idle_time, -idle_men, -no_of_style_change) |>
+  mutate(department = ifelse(department == "sweing", "sewing", department))
+names(work2)
+```
+
+```{r}
+work3 <- work2 |>
+  rename(dept = department, target = targeted_productivity, ot = over_time, 
+         workers = no_of_workers, actual = actual_productivity) |>
+  mutate(dept = factor(dept), 
+         team = factor(team), 
+         day = factor(day, 
+                      levels = c("Saturday", "Sunday", "Monday", "Tuesday", 
+                                 "Wednesday", "Thursday", "Friday"))) |>
+  group_by(dept)
+head(work3)
+
+names(work3)
+```
+
+### 5. Select a subset of random dates then drop date from data frame 
+
+```{r}
+sewing <- work3 |>
+  ungroup() |>
+  mutate(date = as.Date(x = date, "%m/%d/%Y")) |>
+  filter(incentive !=0)
+
+unique.dates <- sewing |>
+  select(date) |>
+  unique()
+
+unique.dates$date
+
+
+vec = sample(unique.dates$date, 3)
+vec
+
+static.vec = c(as.Date("2015-01-27"), as.Date("2015-02-14"), as.Date("2015-03-02"))
+
+sewing2 <- sewing |>
+  filter(date %in% static.vec) |>
+  select(-date, -dept)
+
+head(sewing2)
+dim(sewing2)
+
+```
+
+### 6. Check for normal distribution of response (actual)
+
+```{r}
+sewing2 |>
+  ggplot(aes(x = actual)) +
+  geom_histogram(bins = 20)
+```
+
+not normal distribution. We'll need to transform Y later on
+
+
+
+# Model
+
+### 1. Scatterplot matrix
+
+```{r, message=FALSE, warning=FALSE}
+library(GGally)
+sewing2 |>  ggpairs()
+```
+
+
+### 2. AIC Variable Selection
+
+```{r}
+n = nrow(sewing2)
+mod0 = lm(actual ~ 1, data = sewing2)
+mod.all = lm(actual ~., data = sewing2)
+step(mod0, scope = list(lower = mod0, upper = mod.all))
+```
+
+```{r}
+mod.full <- lm(formula = actual ~ incentive + target + day + workers + wip, 
+    data = sewing2)
+
+summary(mod.full)
+```
+
+
+### 3. Define a reduced model
+
+```{r}
+mod.reduced <- lm(formula = actual ~ incentive + target + day, data = sewing2 )
+
+summary(mod.reduced)
+```
+
+### 4. anova F test on reduced model 
+
+```{r}
+anova(mod.reduced, mod.full)
+```
+
+
+### 5. Define final model 
+
+```{r}
+mod = mod.full
+summary(mod)
+```
+
+### 6. Check LINE conditions on final model
+
+Final model is: 
+lm(formula = actual ~ incentive + target + day + workers + wip, data = sewing2)
+
+```{r}
+sewing2 |>
+  ggplot(aes(x = incentive + target + workers + wip, y = actual, color = day)) +
+  geom_point() + geom_smooth(method = "lm", se=FALSE) +
+  ggtitle("Full Model v Actual")
+```
+
+
+```{r}
+sewing2 |>
+  ggplot(aes(x = incentive, y = actual)) +
+  geom_point() + geom_smooth(method = "lm", se=FALSE) +
+  ggtitle("Incentive v Actual")
+```
+
+```{r}
+sewing2 |>
+  ggplot(aes(x = target, y = actual)) +
+  geom_point() + geom_smooth(method = "lm", se=FALSE) +
+  ggtitle("Target v Actual")
+```
+
+```{r}
+sewing2 |>
+  ggplot(aes(x = day, y = actual)) +
+  geom_point() + geom_smooth(method = "lm", se=FALSE) +
+  ggtitle("Day v Actual")
+```
+
+```{r}
+sewing2 |>
+  ggplot(aes(x = workers, y = actual)) +
+  geom_point() + geom_smooth(method = "lm", se=FALSE) +
+  ggtitle("Workers v Actual")
+```
+
+```{r}
+sewing2 |>
+  ggplot(aes(x = wip, y = actual)) +
+  geom_point() + geom_smooth(method = "lm", se=FALSE) +
+  ggtitle("Wip v Actual")
+```
+
+```{r}
+library(broom)
+model.table = augment(mod)
+names(model.table)
+
+ggplot(model.table, aes(x = .fitted, y = .resid)) +
+  geom_point() +
+  geom_hline(yintercept = 0, colour = 'blue') +
+  labs(x = 'Fitted Values', y = 'Residuals') +
+  ggtitle('Residual vs Fit') +
+  theme_bw()
+
+```
+
+
+
+```{r}
+ggplot(model.table, aes(sample = .resid)) +
+  stat_qq() +
+  stat_qq_line() +
+  ggtitle('Normal Q-Q Plot') +
+  theme_bw()
+```
+
+
+```{r}
+shapiro.test(resid(mod))
+```
+
+
+
+
+
+
+
