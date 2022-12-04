@@ -267,3 +267,41 @@ work.summary |>
 ```
 
 Team 1 is the most productive in the sewing department. 
+
+
+# Modeling
+
+```{r, message=FALSE, warning=FALSE}
+library(GGally)
+sewing <- work3 |>
+  filter(dept == "sewing")
+
+sewing |>
+  ungroup() |>
+  select(ot, incentive, workers, actual) |>
+  ggpairs()
+
+```
+
+incentive looks linearly related to actual, but they are also highly correlated.
+
+### Test the full model (with all 3 variables) against the reduced model (without workers)
+```{r}
+mod.full = lm(actual ~ incentive + ot + workers, data = sewing)
+mod.reduced = lm(actual ~ incentive + ot, data = sewing)
+anova(mod.reduced, mod.full)
+```
+
+p>0.05 so accept the reduced model
+
+```{r}
+summary(mod.reduced)
+```
+
+```{r}
+mod.minimal = lm(actual ~incentive, data = sewing)
+anova(mod.minimal, mod.reduced)
+```
+
+p < 0.05 so reject the further reduced model and keep the model with 2 variables incentive and workers
+# Variable Selection 
